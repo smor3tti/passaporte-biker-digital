@@ -2,13 +2,31 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Passaporte Biker Digital</title>
-<link rel="icon" href="data:," />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Rota Biker — Passaporte Biker Digital</title>
+
+<link rel="manifest" href="./manifest.json" />
+<meta name="theme-color" content="#14110E" />
+<meta name="description" content="Rotas, passaporte de monumentos, feed e eventos para motociclistas." />
+
+<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png" />
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Rota Biker" />
+<meta name="mobile-web-app-capable" content="yes" />
+
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body>
 <div id="root"></div>
 <script src="./app.bundle.js"></script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch((err) => console.warn("SW falhou:", err));
+    });
+  }
+</script>
 </body>
 </html>
