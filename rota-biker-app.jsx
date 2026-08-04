@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Navigation, MapPin, Fuel, Star, ChevronRight, Compass, User, Shield,
   CalendarDays, Upload, Trash2, Check, Plus, Loader2, Users, Bike, Route,
-  Image as ImageIcon, UserPlus, UserCheck, Camera, Heart
+  Image as ImageIcon, UserPlus, UserCheck, Camera, Heart, Award, Crosshair, Lock
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- */
@@ -102,6 +102,7 @@ function Empty({ icon: Icon, text }) {
 /* ---------------------------------------------------------------- */
 const TABS = [
   { id: "rota", label: "Rota", icon: Compass },
+  { id: "passaporte", label: "Passaporte", icon: Award },
   { id: "feed", label: "Feed", icon: Camera },
   { id: "perfil", label: "Perfil", icon: User },
   { id: "comunidade", label: "Comunidade", icon: Users },
@@ -120,6 +121,7 @@ export default function RotaBikerApp() {
   const [eventos, setEventos] = useState([]);
   const [comunidade, setComunidade] = useState([]);
   const [feed, setFeed] = useState([]);
+  const [checkins, setCheckins] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -143,6 +145,10 @@ export default function RotaBikerApp() {
       try {
         const fd = await window.storage.get("feed", true);
         if (fd) setFeed(JSON.parse(fd.value));
+      } catch {}
+      try {
+        const ck = await window.storage.get("checkins", false);
+        if (ck) setCheckins(JSON.parse(ck.value));
       } catch {}
       setLoading(false);
     })();
@@ -214,6 +220,10 @@ export default function RotaBikerApp() {
     setFeed(next);
     await persist("feed", next, true);
   }
+  async function saveCheckins(next) {
+    setCheckins(next);
+    await persist("checkins", next, false);
+  }
 
   if (loading) {
     return (
@@ -277,8 +287,9 @@ export default function RotaBikerApp() {
         </div>
 
         {/* Stat strip */}
-        <div className="relative mt-7 grid grid-cols-2 gap-3 sm:max-w-lg sm:grid-cols-4">
+        <div className="relative mt-7 grid grid-cols-2 gap-3 sm:max-w-2xl sm:grid-cols-5">
           <StatChip icon={Compass} value={MONUMENTS.length} label="monumentos" />
+          <StatChip icon={Award} value={checkins.length} label="carimbos" />
           <StatChip icon={Camera} value={feed.length} label="posts" />
           <StatChip icon={Users} value={comunidade.length} label="motociclistas" />
           <StatChip icon={CalendarDays} value={eventos.length} label="eventos" />
@@ -308,6 +319,7 @@ export default function RotaBikerApp() {
 
       <main className="mx-auto max-w-5xl px-6 py-10 sm:px-10">
         {tab === "rota" && <RotaTab />}
+        {tab === "passaporte" && <PassaporteTab checkins={checkins} onSave={saveCheckins} />}
         {tab === "feed" && (
           <FeedTab feed={feed} onSave={saveFeed} onToggleLike={toggleLike} profile={profile} />
         )}
@@ -1095,6 +1107,133 @@ function FeedTab({ feed, onSave, onToggleLike, profile }) {
                   {p.curtidas.length > 0 ? p.curtidas.length : "Curtir"}
                 </button>
               </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Tab: Passaporte (check-in por geolocalização)                    */
+/* ---------------------------------------------------------------- */
+const CHECKIN_RADIUS_KM = 15; // tolerância, já que as coordenadas de alguns pontos são aproximadas
+
+function getPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Seu navegador não suporta geolocalização."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 30000,
+    });
+  });
+}
+
+function PassaporteTab({ checkins, onSave }) {
+  const [status, setStatus] = useState("idle"); // idle | locating | success | far | error
+  const [message, setMessage] = useState("");
+
+  const visitedIds = new Set(checkins.map((c) => c.monumentId));
+
+  async function fazerCheckin() {
+    setStatus("locating");
+    setMessage("");
+    try {
+      const pos = await getPosition();
+      const { latitude, longitude } = pos.coords;
+
+      let nearest = null;
+      let nearestKm = Infinity;
+      for (const m of MONUMENTS) {
+        const km = haversineKm(latitude, longitude, m.lat, m.lng);
+        if (km < nearestKm) {
+          nearestKm = km;
+          nearest = m;
+        }
+      }
+
+      if (nearestKm <= CHECKIN_RADIUS_KM) {
+        if (visitedIds.has(nearest.n)) {
+          setStatus("success");
+          setMessage(`Você já tinha carimbado "${nearest.name}" (${nearest.city}-${nearest.uf}).`);
+        } else {
+          const novo = { monumentId: nearest.n, ts: Date.now(), km: Math.round(nearestKm * 10) / 10 };
+          await onSave([...checkins, novo]);
+          setStatus("success");
+          setMessage(`Carimbo novo: "${nearest.name}" (${nearest.city}-${nearest.uf})!`);
+        }
+      } else {
+        setStatus("far");
+        setMessage(
+          `Você está a ~${Math.round(nearestKm)} km do ponto mais próximo, "${nearest.name}" (${nearest.city}-${nearest.uf}). Chegue mais perto para carimbar.`
+        );
+      }
+    } catch (err) {
+      setStatus("error");
+      if (err.code === 1) setMessage("Permissão de localização negada. Ative-a nas configurações do navegador.");
+      else setMessage(err.message || "Não foi possível obter sua localização.");
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Passaporte Biker</h2>
+          <p className="mt-1 text-sm text-[#A79A88]">
+            {checkins.length} de {MONUMENTS.length} monumentos carimbados
+          </p>
+        </div>
+        <PrimaryButton onClick={fazerCheckin} disabled={status === "locating"}>
+          {status === "locating" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crosshair className="h-4 w-4" />}
+          {status === "locating" ? "Localizando…" : "Fazer check-in"}
+        </PrimaryButton>
+      </div>
+
+      {message && (
+        <Card
+          className={`mt-4 p-4 text-sm ${
+            status === "success" ? "border-[#7BAE7F]/40 text-[#B7D8B9]" : status === "far" ? "text-[#C4B8A4]" : "border-[#B4442E]/40 text-[#E08072]"
+          }`}
+        >
+          {message}
+        </Card>
+      )}
+
+      <p className="mono mt-6 text-[10px] uppercase tracking-[0.2em] text-[#6E6252]">
+        O check-in usa a localização do seu dispositivo — o navegador vai pedir permissão.
+      </p>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {MONUMENTS.map((m) => {
+          const visited = visitedIds.has(m.n);
+          const checkin = checkins.find((c) => c.monumentId === m.n);
+          return (
+            <Card
+              key={m.n}
+              className={`flex flex-col items-center gap-2 p-4 text-center ${
+                visited ? "border-[#E08A2E]/50 bg-[#241C12]" : "opacity-60"
+              }`}
+            >
+              <div
+                className={`flex h-12 w-12 items-center justify-center rounded-full border-2 ${
+                  visited ? "border-[#E08A2E] text-[#E08A2E]" : "border-[#33291F] text-[#33291F]"
+                }`}
+              >
+                {visited ? <Award className="h-5 w-5" /> : <Lock className="h-4 w-4" />}
+              </div>
+              <p className="disp text-xs font-semibold leading-tight text-[#F3ECE1]">{m.name}</p>
+              <p className="mono text-[9px] text-[#6E6252]">{m.city}-{m.uf}</p>
+              {visited && checkin && (
+                <p className="mono text-[9px] text-[#E08A2E]">
+                  {new Date(checkin.ts).toLocaleDateString("pt-BR")}
+                </p>
+              )}
             </Card>
           );
         })}
