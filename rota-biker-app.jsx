@@ -1,9 +1,19 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 import {
   Navigation, MapPin, Fuel, Star, ChevronRight, Compass, User, Shield,
   CalendarDays, Upload, Trash2, Check, Plus, Loader2, Users, Bike, Route,
-  Image as ImageIcon, UserPlus, UserCheck, Camera, Heart, Award, Crosshair, Lock
+  Image as ImageIcon, UserPlus, UserCheck, Camera, Heart, Award, Crosshair,
+  Lock, LogOut, Mail, KeyRound, AlertCircle
 } from "lucide-react";
+
+/* ---------------------------------------------------------------- */
+/* Supabase — backend real (Postgres + Auth + Storage), plano gratis */
+/* ---------------------------------------------------------------- */
+const SUPABASE_URL = "https://resuvcuovhiqherukxqz.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlc3V2Y3VvdmhpcWhlcnVreHF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4MDczNTEsImV4cCI6MjEwMTM4MzM1MX0.hoA_TJGzJw8sA8zWY9M7HCibcb1DiRlF2RHWP6a9sDA";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* ---------------------------------------------------------------- */
 /* Data: Rota Biker monuments                                       */
@@ -47,11 +57,16 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 const BRAZIL_CENTER = { lat: -14.235, lng: -51.9253 };
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+async function uploadImage(bucket, path, file) {
+  const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
+  if (error) throw error;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data.publicUrl;
+}
+
 /* ---------------------------------------------------------------- */
-/* Design tokens (see inline <style> for fonts)                     */
-/* bg #14110E · surface #1C1712 · surface-raised #221C16            */
-/* border #33291F · accent (ignição) #E08A2E · accent-2 (freio) #B4442E */
-/* text #F3ECE1 · text-muted #A79A88 · text-faint #6E6252            */
+/* Design tokens                                                     */
+/* bg #14110E · surface #1C1712 · border #33291F · accent #E08A2E   */
 /* ---------------------------------------------------------------- */
 function Field({ label, children }) {
   return (
@@ -64,14 +79,11 @@ function Field({ label, children }) {
 const inputCls =
   "w-full rounded-lg border border-[#33291F] bg-[#1C1712] px-3.5 py-3 text-sm text-[#F3ECE1] outline-none placeholder:text-[#5C5240] transition focus:border-[#E08A2E] focus:ring-2 focus:ring-[#E08A2E]/15";
 
-function PrimaryButton({ children, tone = "accent", ...props }) {
-  const tones = {
-    accent: "bg-[#E08A2E] text-[#14110E] hover:bg-[#F0A24C] shadow-[0_4px_18px_-4px_rgba(224,138,46,0.55)]",
-  };
+function PrimaryButton({ children, ...props }) {
   return (
     <button
       {...props}
-      className={`flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold uppercase tracking-wide transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#26201A] disabled:text-[#5C5240] disabled:shadow-none ${tones[tone]}`}
+      className="flex items-center justify-center gap-2 rounded-lg bg-[#E08A2E] px-5 py-3 text-sm font-semibold uppercase tracking-wide text-[#14110E] shadow-[0_4px_18px_-4px_rgba(224,138,46,0.55)] transition hover:bg-[#F0A24C] active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#26201A] disabled:text-[#5C5240] disabled:shadow-none"
     >
       {children}
     </button>
@@ -97,6 +109,163 @@ function Empty({ icon: Icon, text }) {
   );
 }
 
+function StatChip({ icon: Icon, value, label }) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-lg border border-[#2C251C] bg-[#1C1712]/80 px-3 py-2.5 backdrop-blur">
+      <Icon className="h-4 w-4 text-[#E08A2E]" />
+      <div>
+        <div className="mono text-base font-bold leading-none text-[#F3ECE1]">{value}</div>
+        <div className="mono text-[9px] uppercase tracking-[0.2em] text-[#6E6252]">{label}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Tela de autenticacao (login / cadastro)                          */
+/* ---------------------------------------------------------------- */
+function AuthScreen() {
+  const [mode, setMode] = useState("login"); // login | cadastro
+  const [nome, setNome] = useState("");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    setError("");
+    setInfo("");
+    setBusy(true);
+    try {
+      if (mode === "cadastro") {
+        const { error: err } = await supabase.auth.signUp({
+          email: email.trim(),
+          password: senha,
+          options: { data: { nome: nome.trim() } },
+        });
+        if (err) throw err;
+        setInfo("Conta criada! Se a confirmação por e-mail estiver ativa, confira sua caixa de entrada. Caso contrário, você já pode entrar.");
+      } else {
+        const { error: err } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: senha,
+        });
+        if (err) throw err;
+      }
+    } catch (err) {
+      setError(traduzErro(err.message));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function traduzErro(msg) {
+    if (!msg) return "Algo deu errado. Tente novamente.";
+    if (msg.includes("Invalid login credentials")) return "E-mail ou senha incorretos.";
+    if (msg.includes("User already registered")) return "Esse e-mail já tem cadastro. Tente entrar.";
+    if (msg.includes("Password should be at least")) return "A senha precisa ter pelo menos 6 caracteres.";
+    if (msg.includes("Unable to validate email")) return "E-mail inválido.";
+    return msg;
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#14110E] px-6 py-12 text-[#F3ECE1] font-[Inter]">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap');
+        .disp { font-family: 'Oswald', sans-serif; letter-spacing: 0.02em; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+      `}</style>
+
+      <div className="w-full max-w-sm">
+        <div className="mb-8 text-center">
+          <p className="mono flex items-center justify-center gap-2 text-[11px] uppercase tracking-[0.4em] text-[#E08A2E]">
+            <Bike className="h-3.5 w-3.5" /> Comunidade &amp; estrada
+          </p>
+          <h1 className="disp mt-2 text-4xl font-bold uppercase text-[#F3ECE1]">Rota Biker</h1>
+        </div>
+
+        <div className="mb-5 inline-flex w-full rounded-lg border border-[#2C251C] bg-[#1A150F] p-1">
+          {[
+            { id: "login", label: "Entrar" },
+            { id: "cadastro", label: "Criar conta" },
+          ].map((m) => (
+            <button
+              key={m.id}
+              onClick={() => {
+                setMode(m.id);
+                setError("");
+                setInfo("");
+              }}
+              className={`flex-1 rounded-md px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+                mode === m.id ? "bg-[#E08A2E] text-[#14110E]" : "text-[#A79A88] hover:text-[#F3ECE1]"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        <Card className="p-6">
+          <form onSubmit={submit} className="flex flex-col gap-4">
+            {mode === "cadastro" && (
+              <Field label="Nome completo">
+                <input className={inputCls} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Seu nome" required />
+              </Field>
+            )}
+            <Field label="E-mail">
+              <div className="flex items-center gap-2 rounded-lg border border-[#33291F] bg-[#1C1712] px-3.5 py-3 transition focus-within:border-[#E08A2E]">
+                <Mail className="h-4 w-4 shrink-0 text-[#8A7C69]" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="voce@email.com"
+                  className="w-full bg-transparent text-sm text-[#F3ECE1] outline-none placeholder:text-[#5C5240]"
+                  required
+                />
+              </div>
+            </Field>
+            <Field label="Senha">
+              <div className="flex items-center gap-2 rounded-lg border border-[#33291F] bg-[#1C1712] px-3.5 py-3 transition focus-within:border-[#E08A2E]">
+                <KeyRound className="h-4 w-4 shrink-0 text-[#8A7C69]" />
+                <input
+                  type="password"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className="w-full bg-transparent text-sm text-[#F3ECE1] outline-none placeholder:text-[#5C5240]"
+                  minLength={6}
+                  required
+                />
+              </div>
+            </Field>
+
+            {error && (
+              <div className="flex items-start gap-2 rounded-lg border border-[#B4442E]/40 bg-[#241512] px-3.5 py-3 text-xs text-[#E08072]">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
+              </div>
+            )}
+            {info && (
+              <div className="rounded-lg border border-[#7BAE7F]/40 bg-[#152018] px-3.5 py-3 text-xs text-[#B7D8B9]">{info}</div>
+            )}
+
+            <PrimaryButton disabled={busy} type="submit">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {mode === "cadastro" ? "Criar minha conta" : "Entrar"}
+            </PrimaryButton>
+          </form>
+        </Card>
+
+        <p className="mono mt-6 text-center text-[10px] uppercase tracking-[0.2em] text-[#4A4030]">
+          Seus dados ficam protegidos por login real (Supabase Auth)
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------- */
 /* App shell                                                         */
 /* ---------------------------------------------------------------- */
@@ -111,128 +280,212 @@ const TABS = [
 ];
 
 export default function RotaBikerApp() {
+  const [session, setSession] = useState(undefined); // undefined = carregando, null = deslogado
   const [tab, setTab] = useState("rota");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
-  const [profile, setProfile] = useState({
-    id: "", nome: "", cidade: "", modeloMoto: "", pertenceMotoclube: false, nomeMotoclube: "", publico: true,
-  });
+  const [profile, setProfile] = useState(null);
   const [eventos, setEventos] = useState([]);
   const [comunidade, setComunidade] = useState([]);
+  const [follows, setFollows] = useState([]);
   const [feed, setFeed] = useState([]);
+  const [likes, setLikes] = useState([]);
   const [checkins, setCheckins] = useState([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
+  // Sessão
   useEffect(() => {
-    (async () => {
-      let loadedProfile = null;
-      try {
-        const p = await window.storage.get("profile", false);
-        if (p) {
-          loadedProfile = JSON.parse(p.value);
-          if (!loadedProfile.id) loadedProfile.id = uid();
-          setProfile(loadedProfile);
-        }
-      } catch {}
-      try {
-        const ev = await window.storage.get("eventos", true);
-        if (ev) setEventos(JSON.parse(ev.value));
-      } catch {}
-      try {
-        const cm = await window.storage.get("comunidade", true);
-        if (cm) setComunidade(JSON.parse(cm.value));
-      } catch {}
-      try {
-        const fd = await window.storage.get("feed", true);
-        if (fd) setFeed(JSON.parse(fd.value));
-      } catch {}
-      try {
-        const ck = await window.storage.get("checkins", false);
-        if (ck) setCheckins(JSON.parse(ck.value));
-      } catch {}
-      setLoading(false);
-    })();
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  async function persist(key, value, shared) {
-    setSaving(true);
-    try {
-      await window.storage.set(key, JSON.stringify(value), shared);
-    } catch (e) {
-      console.error("Falha ao salvar", key, e);
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function saveProfile(next) {
-    const withId = next.id ? next : { ...next, id: uid() };
-    setProfile(withId);
-    await persist("profile", withId, false);
+  // Carrega dados assim que autenticado
+  useEffect(() => {
+    if (session === undefined || session === null) return;
+    reloadAll();
+  }, [session?.user?.id]);
 
-    // Keep the community directory in sync with this profile
-    const others = comunidade.filter((c) => c.id !== withId.id);
-    let nextComunidade = others;
-    if (withId.publico && withId.nome.trim()) {
-      const existing = comunidade.find((c) => c.id === withId.id);
-      nextComunidade = [
-        ...others,
-        {
-          id: withId.id,
-          nome: withId.nome,
-          cidade: withId.cidade,
-          modeloMoto: withId.modeloMoto,
-          nomeMotoclube: withId.pertenceMotoclube ? withId.nomeMotoclube : "",
-          seguidores: existing?.seguidores || [],
-        },
-      ];
-    }
-    setComunidade(nextComunidade);
-    await persist("comunidade", nextComunidade, true);
+  async function reloadAll() {
+    setDataLoading(true);
+    await Promise.all([loadProfile(), loadComunidade(), loadFeed(), loadEventos(), loadCheckins()]);
+    setDataLoading(false);
   }
-  async function saveEventos(next) {
-    setEventos(next);
-    await persist("eventos", next, true);
+
+  async function loadProfile() {
+    const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
+    setProfile(data);
   }
+  async function loadComunidade() {
+    const [{ data: perfis }, { data: fw }] = await Promise.all([
+      supabase.from("profiles").select("id, nome, cidade, modelo_moto, nome_motoclube").eq("publico", true),
+      supabase.from("follows").select("follower_id, following_id"),
+    ]);
+    setComunidade(perfis || []);
+    setFollows(fw || []);
+  }
+  async function loadFeed() {
+    const { data: posts } = await supabase
+      .from("posts")
+      .select("id, texto, foto_url, criado_em, autor_id, profiles(nome, cidade)")
+      .order("criado_em", { ascending: false })
+      .limit(50);
+    const ids = (posts || []).map((p) => p.id);
+    const { data: lk } =
+      ids.length > 0
+        ? await supabase.from("post_likes").select("post_id, user_id").in("post_id", ids)
+        : { data: [] };
+    setFeed(posts || []);
+    setLikes(lk || []);
+  }
+  async function loadEventos() {
+    const { data } = await supabase
+      .from("eventos")
+      .select("*, evento_confirmacoes(user_id, profiles(nome))")
+      .order("criado_em", { ascending: false });
+    setEventos(data || []);
+  }
+  async function loadCheckins() {
+    const { data } = await supabase.from("checkins").select("*").eq("user_id", session.user.id);
+    setCheckins(data || []);
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    setProfile(null);
+    setEventos([]);
+    setComunidade([]);
+    setFeed([]);
+    setCheckins([]);
+  }
+
+  // --- Mutations -----------------------------------------------------
+  async function saveProfile(next) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        nome: next.nome,
+        cidade: next.cidade,
+        modelo_moto: next.modeloMoto,
+        pertence_motoclube: next.pertenceMotoclube,
+        nome_motoclube: next.nomeMotoclube,
+        publico: next.publico,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq("id", session.user.id);
+    if (error) throw error;
+    await Promise.all([loadProfile(), loadComunidade()]);
+  }
+
+  async function saveCrest(file) {
+    const ext = file.name.split(".").pop();
+    const url = await uploadImage("brasoes", `${session.user.id}/brasao.${ext}`, file);
+    const { error } = await supabase.from("profiles").update({ brasao_url: url }).eq("id", session.user.id);
+    if (error) throw error;
+    await loadProfile();
+  }
+  async function removeCrest() {
+    const { error } = await supabase.from("profiles").update({ brasao_url: null }).eq("id", session.user.id);
+    if (error) throw error;
+    await loadProfile();
+  }
+
   async function toggleFollow(targetId) {
-    if (!profile.id) return;
-    const next = comunidade.map((c) => {
-      if (c.id !== targetId) return c;
-      const already = c.seguidores.includes(profile.id);
-      return {
-        ...c,
-        seguidores: already ? c.seguidores.filter((id) => id !== profile.id) : [...c.seguidores, profile.id],
-      };
-    });
-    setComunidade(next);
-    await persist("comunidade", next, true);
+    const already = follows.some((f) => f.follower_id === session.user.id && f.following_id === targetId);
+    if (already) {
+      await supabase.from("follows").delete().eq("follower_id", session.user.id).eq("following_id", targetId);
+    } else {
+      await supabase.from("follows").insert({ follower_id: session.user.id, following_id: targetId });
+    }
+    await loadComunidade();
   }
-  async function saveFeed(next) {
-    setFeed(next);
-    await persist("feed", next, true);
+
+  async function publicarPost({ texto, file }) {
+    let fotoUrl = null;
+    if (file) {
+      const ext = file.name.split(".").pop();
+      fotoUrl = await uploadImage("feed-fotos", `${session.user.id}/${uid()}.${ext}`, file);
+    }
+    const { error } = await supabase.from("posts").insert({ autor_id: session.user.id, texto, foto_url: fotoUrl });
+    if (error) throw error;
+    await loadFeed();
+  }
+  async function removerPost(id) {
+    await supabase.from("posts").delete().eq("id", id);
+    await loadFeed();
   }
   async function toggleLike(postId) {
-    if (!profile.id) return;
-    const next = feed.map((p) => {
-      if (p.id !== postId) return p;
-      const already = p.curtidas.includes(profile.id);
-      return { ...p, curtidas: already ? p.curtidas.filter((id) => id !== profile.id) : [...p.curtidas, profile.id] };
-    });
-    setFeed(next);
-    await persist("feed", next, true);
-  }
-  async function saveCheckins(next) {
-    setCheckins(next);
-    await persist("checkins", next, false);
+    const already = likes.some((l) => l.post_id === postId && l.user_id === session.user.id);
+    if (already) {
+      await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_id", session.user.id);
+    } else {
+      await supabase.from("post_likes").insert({ post_id: postId, user_id: session.user.id });
+    }
+    await loadFeed();
   }
 
-  if (loading) {
+  async function publicarEvento({ titulo, motoclube, local, data, hora, descricao, file }) {
+    let flyerUrl = null;
+    if (file) {
+      const ext = file.name.split(".").pop();
+      flyerUrl = await uploadImage("flyers", `${session.user.id}/${uid()}.${ext}`, file);
+    }
+    const { error } = await supabase.from("eventos").insert({
+      titulo, motoclube, local, data: data || null, hora: hora || null, descricao,
+      flyer_url: flyerUrl, criado_por: session.user.id,
+    });
+    if (error) throw error;
+    await loadEventos();
+  }
+  async function removerEvento(id) {
+    await supabase.from("eventos").delete().eq("id", id);
+    await loadEventos();
+  }
+  async function toggleConfirmEvento(eventoId) {
+    const evento = eventos.find((e) => e.id === eventoId);
+    const already = evento?.evento_confirmacoes?.some((c) => c.user_id === session.user.id);
+    if (already) {
+      await supabase.from("evento_confirmacoes").delete().eq("evento_id", eventoId).eq("user_id", session.user.id);
+    } else {
+      await supabase.from("evento_confirmacoes").insert({ evento_id: eventoId, user_id: session.user.id });
+    }
+    await loadEventos();
+  }
+
+  async function registrarCheckin(monumentId, km) {
+    const { error } = await supabase
+      .from("checkins")
+      .insert({ user_id: session.user.id, monument_id: monumentId, distancia_km: km });
+    if (error && error.code !== "23505") throw error; // 23505 = ja existe (unique), ignora
+    await loadCheckins();
+  }
+
+  if (session === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#14110E] text-[#A79A88]">
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap');`}</style>
         <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#E08A2E]" /> Carregando…
       </div>
     );
   }
+  if (session === null) return <AuthScreen />;
+  if (dataLoading || !profile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#14110E] text-[#A79A88]">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#E08A2E]" /> Carregando seus dados…
+      </div>
+    );
+  }
+
+  const profileUi = {
+    id: profile.id,
+    nome: profile.nome || "",
+    cidade: profile.cidade || "",
+    modeloMoto: profile.modelo_moto || "",
+    pertenceMotoclube: profile.pertence_motoclube || false,
+    nomeMotoclube: profile.nome_motoclube || "",
+    publico: profile.publico,
+    brasaoUrl: profile.brasao_url,
+  };
+  const seguidoresCount = follows.filter((f) => f.following_id === session.user.id).length;
 
   return (
     <div className="min-h-screen w-full bg-[#14110E] text-[#F3ECE1] font-[Inter]">
@@ -244,7 +497,6 @@ export default function RotaBikerApp() {
         ::-webkit-scrollbar-thumb { background: #33291F; border-radius: 999px; }
       `}</style>
 
-      {/* Hero header */}
       <header className="relative overflow-hidden border-b border-[#2C251C] px-6 py-10 sm:px-10">
         <div
           className="pointer-events-none absolute inset-0"
@@ -273,20 +525,14 @@ export default function RotaBikerApp() {
             </p>
           </div>
 
-          <div className="mono flex items-center gap-2 self-start rounded-full border border-[#2C251C] bg-[#1C1712] px-3 py-1.5 text-[11px] text-[#8A7C69] sm:self-auto">
-            {saving ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#E08A2E]" /> salvando…
-              </>
-            ) : (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-[#7BAE7F]" /> tudo salvo
-              </>
-            )}
-          </div>
+          <button
+            onClick={signOut}
+            className="mono flex items-center gap-2 self-start rounded-full border border-[#2C251C] bg-[#1C1712] px-3 py-1.5 text-[11px] text-[#A79A88] transition hover:border-[#B4442E] hover:text-[#E08072] sm:self-auto"
+          >
+            <LogOut className="h-3.5 w-3.5" /> Sair ({session.user.email})
+          </button>
         </div>
 
-        {/* Stat strip */}
         <div className="relative mt-7 grid grid-cols-2 gap-3 sm:max-w-2xl sm:grid-cols-5">
           <StatChip icon={Compass} value={MONUMENTS.length} label="monumentos" />
           <StatChip icon={Award} value={checkins.length} label="carimbos" />
@@ -295,7 +541,6 @@ export default function RotaBikerApp() {
           <StatChip icon={CalendarDays} value={eventos.length} label="eventos" />
         </div>
 
-        {/* Tabs */}
         <nav className="relative mt-7 flex gap-1.5 overflow-x-auto pb-1">
           {TABS.map((t) => {
             const Icon = t.icon;
@@ -319,16 +564,45 @@ export default function RotaBikerApp() {
 
       <main className="mx-auto max-w-5xl px-6 py-10 sm:px-10">
         {tab === "rota" && <RotaTab />}
-        {tab === "passaporte" && <PassaporteTab checkins={checkins} onSave={saveCheckins} />}
+        {tab === "passaporte" && (
+          <PassaporteTab checkins={checkins} onCheckin={registrarCheckin} />
+        )}
         {tab === "feed" && (
-          <FeedTab feed={feed} onSave={saveFeed} onToggleLike={toggleLike} profile={profile} />
+          <FeedTab
+            feed={feed}
+            likes={likes}
+            userId={session.user.id}
+            onPublish={publicarPost}
+            onRemove={removerPost}
+            onToggleLike={toggleLike}
+          />
         )}
-        {tab === "perfil" && <PerfilTab profile={profile} onSave={saveProfile} comunidade={comunidade} />}
+        {tab === "perfil" && (
+          <PerfilTab profile={profileUi} onSave={saveProfile} seguidoresCount={seguidoresCount} />
+        )}
         {tab === "comunidade" && (
-          <ComunidadeTab comunidade={comunidade} profile={profile} onToggleFollow={toggleFollow} />
+          <ComunidadeTab
+            comunidade={comunidade}
+            follows={follows}
+            userId={session.user.id}
+            publico={profile.publico}
+            temNome={!!profile.nome?.trim()}
+            onToggleFollow={toggleFollow}
+          />
         )}
-        {tab === "motoclube" && <MotoclubeTab profile={profile} onSave={saveProfile} />}
-        {tab === "eventos" && <EventosTab eventos={eventos} onSave={saveEventos} profile={profile} />}
+        {tab === "motoclube" && (
+          <MotoclubeTab profile={profileUi} onUpload={saveCrest} onRemove={removeCrest} />
+        )}
+        {tab === "eventos" && (
+          <EventosTab
+            eventos={eventos}
+            userId={session.user.id}
+            userNome={profile.nome}
+            onPublish={publicarEvento}
+            onRemove={removerEvento}
+            onToggleConfirm={toggleConfirmEvento}
+          />
+        )}
       </main>
 
       <footer className="border-t border-[#2C251C] px-6 py-6 text-center sm:px-10">
@@ -340,20 +614,8 @@ export default function RotaBikerApp() {
   );
 }
 
-function StatChip({ icon: Icon, value, label }) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-lg border border-[#2C251C] bg-[#1C1712]/80 px-3 py-2.5 backdrop-blur">
-      <Icon className="h-4 w-4 text-[#E08A2E]" />
-      <div>
-        <div className="mono text-base font-bold leading-none text-[#F3ECE1]">{value}</div>
-        <div className="mono text-[9px] uppercase tracking-[0.2em] text-[#6E6252]">{label}</div>
-      </div>
-    </div>
-  );
-}
-
 /* ---------------------------------------------------------------- */
-/* Tab: Rota (route planner)                                        */
+/* Tab: Rota (planejador de trajeto)                                */
 /* ---------------------------------------------------------------- */
 const ROUTE_MODES = [
   { id: "monumento", label: "Até um monumento", icon: Compass },
@@ -362,10 +624,8 @@ const ROUTE_MODES = [
 
 function RotaTab() {
   const [mode, setMode] = useState("monumento");
-
   return (
     <div>
-      {/* Mode switcher */}
       <div className="mb-7 inline-flex rounded-lg border border-[#2C251C] bg-[#1A150F] p-1">
         {ROUTE_MODES.map((m) => {
           const Icon = m.icon;
@@ -383,7 +643,6 @@ function RotaTab() {
           );
         })}
       </div>
-
       {mode === "monumento" ? <RotaMonumento /> : <RotaPersonalizada />}
     </div>
   );
@@ -393,7 +652,6 @@ function RotaMonumento() {
   const [origin, setOrigin] = useState("");
   const [selected, setSelected] = useState(MONUMENTS[0].n);
   const monument = useMemo(() => MONUMENTS.find((m) => m.n === selected), [selected]);
-
   const estimateKm = origin.trim()
     ? Math.round(haversineKm(BRAZIL_CENTER.lat, BRAZIL_CENTER.lng, monument.lat, monument.lng))
     : null;
@@ -415,7 +673,6 @@ function RotaMonumento() {
             />
           </div>
         </Field>
-
         <Field label="02 · Monumento de destino">
           <select value={selected} onChange={(e) => setSelected(Number(e.target.value))} className={inputCls}>
             {MONUMENTS.map((m) => (
@@ -425,7 +682,6 @@ function RotaMonumento() {
             ))}
           </select>
         </Field>
-
         <a
           href={mapsHref ?? undefined}
           target="_blank"
@@ -442,7 +698,6 @@ function RotaMonumento() {
           </span>
           <ChevronRight className="h-4 w-4 transition group-hover:translate-x-1" />
         </a>
-
         <div>
           <p className="mono mb-3 text-[11px] uppercase tracking-[0.25em] text-[#8A7C69]">Todos os monumentos</p>
           <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
@@ -497,7 +752,6 @@ function RotaMonumento() {
 function RotaPersonalizada() {
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
-
   const ready = origin.trim() && destination.trim();
   const mapsHref = ready
     ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin.trim())}&destination=${encodeURIComponent(destination.trim())}&travelmode=driving`
@@ -512,7 +766,6 @@ function RotaPersonalizada() {
         <p className="mt-2 text-sm text-[#A79A88]">
           Defina livremente o ponto de saída e o destino da sua viagem, sem precisar passar por um monumento.
         </p>
-
         <div className="mt-6 flex flex-col gap-5">
           <Field label="01 · Local de saída">
             <div className="flex items-center gap-2 rounded-lg border border-[#33291F] bg-[#1C1712] px-3.5 py-3 transition focus-within:border-[#E08A2E] focus-within:ring-2 focus-within:ring-[#E08A2E]/15">
@@ -525,7 +778,6 @@ function RotaPersonalizada() {
               />
             </div>
           </Field>
-
           <Field label="02 · Destino">
             <div className="flex items-center gap-2 rounded-lg border border-[#33291F] bg-[#1C1712] px-3.5 py-3 transition focus-within:border-[#E08A2E] focus-within:ring-2 focus-within:ring-[#E08A2E]/15">
               <Navigation className="h-4 w-4 shrink-0 text-[#8A7C69]" />
@@ -537,7 +789,6 @@ function RotaPersonalizada() {
               />
             </div>
           </Field>
-
           <a
             href={mapsHref ?? undefined}
             target="_blank"
@@ -555,9 +806,7 @@ function RotaPersonalizada() {
             <ChevronRight className="h-4 w-4 transition group-hover:translate-x-1" />
           </a>
           {!ready && (
-            <p className="mono -mt-2 text-[11px] text-[#6E6252]">
-              Preencha saída e destino para habilitar a rota.
-            </p>
+            <p className="mono -mt-2 text-[11px] text-[#6E6252]">Preencha saída e destino para habilitar a rota.</p>
           )}
         </div>
       </Card>
@@ -566,20 +815,139 @@ function RotaPersonalizada() {
 }
 
 /* ---------------------------------------------------------------- */
+/* Tab: Passaporte (check-in por geolocalização)                    */
+/* ---------------------------------------------------------------- */
+const CHECKIN_RADIUS_KM = 15;
+
+function getPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Seu navegador não suporta geolocalização."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 30000,
+    });
+  });
+}
+
+function PassaporteTab({ checkins, onCheckin }) {
+  const [status, setStatus] = useState("idle");
+  const [message, setMessage] = useState("");
+  const visitedIds = new Set(checkins.map((c) => c.monument_id));
+
+  async function fazerCheckin() {
+    setStatus("locating");
+    setMessage("");
+    try {
+      const pos = await getPosition();
+      const { latitude, longitude } = pos.coords;
+      let nearest = null;
+      let nearestKm = Infinity;
+      for (const m of MONUMENTS) {
+        const km = haversineKm(latitude, longitude, m.lat, m.lng);
+        if (km < nearestKm) {
+          nearestKm = km;
+          nearest = m;
+        }
+      }
+      if (nearestKm <= CHECKIN_RADIUS_KM) {
+        if (visitedIds.has(nearest.n)) {
+          setStatus("success");
+          setMessage(`Você já tinha carimbado "${nearest.name}" (${nearest.city}-${nearest.uf}).`);
+        } else {
+          await onCheckin(nearest.n, Math.round(nearestKm * 10) / 10);
+          setStatus("success");
+          setMessage(`Carimbo novo: "${nearest.name}" (${nearest.city}-${nearest.uf})!`);
+        }
+      } else {
+        setStatus("far");
+        setMessage(
+          `Você está a ~${Math.round(nearestKm)} km do ponto mais próximo, "${nearest.name}" (${nearest.city}-${nearest.uf}). Chegue mais perto para carimbar.`
+        );
+      }
+    } catch (err) {
+      setStatus("error");
+      if (err.code === 1) setMessage("Permissão de localização negada. Ative-a nas configurações do navegador.");
+      else setMessage(err.message || "Não foi possível obter sua localização.");
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Passaporte Biker</h2>
+          <p className="mt-1 text-sm text-[#A79A88]">{checkins.length} de {MONUMENTS.length} monumentos carimbados</p>
+        </div>
+        <PrimaryButton onClick={fazerCheckin} disabled={status === "locating"}>
+          {status === "locating" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crosshair className="h-4 w-4" />}
+          {status === "locating" ? "Localizando…" : "Fazer check-in"}
+        </PrimaryButton>
+      </div>
+
+      {message && (
+        <Card
+          className={`mt-4 p-4 text-sm ${
+            status === "success" ? "border-[#7BAE7F]/40 text-[#B7D8B9]" : status === "far" ? "text-[#C4B8A4]" : "border-[#B4442E]/40 text-[#E08072]"
+          }`}
+        >
+          {message}
+        </Card>
+      )}
+
+      <p className="mono mt-6 text-[10px] uppercase tracking-[0.2em] text-[#6E6252]">
+        O check-in usa a localização do seu dispositivo — o navegador vai pedir permissão.
+      </p>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {MONUMENTS.map((m) => {
+          const visited = visitedIds.has(m.n);
+          const checkin = checkins.find((c) => c.monument_id === m.n);
+          return (
+            <Card key={m.n} className={`flex flex-col items-center gap-2 p-4 text-center ${visited ? "border-[#E08A2E]/50 bg-[#241C12]" : "opacity-60"}`}>
+              <div className={`flex h-12 w-12 items-center justify-center rounded-full border-2 ${visited ? "border-[#E08A2E] text-[#E08A2E]" : "border-[#33291F] text-[#33291F]"}`}>
+                {visited ? <Award className="h-5 w-5" /> : <Lock className="h-4 w-4" />}
+              </div>
+              <p className="disp text-xs font-semibold leading-tight text-[#F3ECE1]">{m.name}</p>
+              <p className="mono text-[9px] text-[#6E6252]">{m.city}-{m.uf}</p>
+              {visited && checkin && (
+                <p className="mono text-[9px] text-[#E08A2E]">{new Date(checkin.criado_em).toLocaleDateString("pt-BR")}</p>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* Tab: Perfil do motociclista                                      */
 /* ---------------------------------------------------------------- */
-function PerfilTab({ profile, onSave, comunidade }) {
+function PerfilTab({ profile, onSave, seguidoresCount }) {
   const [form, setForm] = useState(profile);
+  const [saving, setSaving] = useState(false);
   useEffect(() => setForm(profile), [profile]);
   const dirty = JSON.stringify(form) !== JSON.stringify(profile);
-  const seguidoresCount = comunidade.find((c) => c.id === profile.id)?.seguidores.length || 0;
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave(form);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-xl">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Cadastro do motociclista</h2>
-          <p className="mt-1 text-sm text-[#A79A88]">Seus dados de contato ficam só neste dispositivo.</p>
+          <p className="mt-1 text-sm text-[#A79A88]">Salvo na sua conta — acessível em qualquer dispositivo.</p>
         </div>
         {seguidoresCount > 0 && (
           <div className="mono flex items-center gap-1.5 rounded-full border border-[#2C251C] bg-[#1C1712] px-3 py-1.5 text-xs text-[#E08A2E]">
@@ -600,12 +968,7 @@ function PerfilTab({ profile, onSave, comunidade }) {
         </Field>
 
         <label className="flex items-center gap-3 rounded-lg border border-[#2C251C] bg-[#14110E] px-4 py-3 text-sm text-[#F3ECE1]">
-          <input
-            type="checkbox"
-            checked={form.pertenceMotoclube}
-            onChange={(e) => setForm({ ...form, pertenceMotoclube: e.target.checked })}
-            className="h-4 w-4 accent-[#E08A2E]"
-          />
+          <input type="checkbox" checked={form.pertenceMotoclube} onChange={(e) => setForm({ ...form, pertenceMotoclube: e.target.checked })} className="h-4 w-4 accent-[#E08A2E]" />
           Eu pertenço a um motoclube
         </label>
 
@@ -616,22 +979,15 @@ function PerfilTab({ profile, onSave, comunidade }) {
         )}
 
         <label className="flex items-center gap-3 rounded-lg border border-[#2C251C] bg-[#14110E] px-4 py-3 text-sm text-[#F3ECE1]">
-          <input
-            type="checkbox"
-            checked={form.publico}
-            onChange={(e) => setForm({ ...form, publico: e.target.checked })}
-            className="h-4 w-4 accent-[#E08A2E]"
-          />
+          <input type="checkbox" checked={form.publico} onChange={(e) => setForm({ ...form, publico: e.target.checked })} className="h-4 w-4 accent-[#E08A2E]" />
           <span>
             Exibir meu perfil na <strong>Comunidade</strong>
-            <span className="mono block text-[10px] font-normal text-[#6E6252]">
-              outros motociclistas poderão ver e seguir você
-            </span>
+            <span className="mono block text-[10px] font-normal text-[#6E6252]">outros motociclistas poderão ver e seguir você</span>
           </span>
         </label>
 
-        <PrimaryButton disabled={!dirty} onClick={() => onSave(form)}>
-          <Check className="h-4 w-4" /> Salvar cadastro
+        <PrimaryButton disabled={!dirty || saving} onClick={handleSave}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Salvar cadastro
         </PrimaryButton>
       </Card>
     </div>
@@ -639,13 +995,79 @@ function PerfilTab({ profile, onSave, comunidade }) {
 }
 
 /* ---------------------------------------------------------------- */
+/* Tab: Comunidade (perfis publicos + seguir)                       */
+/* ---------------------------------------------------------------- */
+function ComunidadeTab({ comunidade, follows, userId, publico, temNome, onToggleFollow }) {
+  const outros = comunidade.filter((c) => c.id !== userId);
+
+  if (!publico || !temNome) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <Empty icon={Users} text='Ative "Exibir meu perfil na Comunidade" na aba Perfil para participar e seguir outros motociclistas.' />
+        {outros.length > 0 && (
+          <p className="mono mt-4 text-center text-[11px] text-[#6E6252]">{outros.length} motociclista(s) já na comunidade</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Comunidade</h2>
+      <p className="mt-1 text-sm text-[#A79A88]">Motociclistas na Rota Biker. Siga quem você já rodou junto.</p>
+
+      <div className="mt-6 flex flex-col gap-3">
+        {outros.length === 0 && <Empty icon={Users} text="Ainda não há outros motociclistas públicos por aqui." />}
+        {outros.map((c) => {
+          const seguidores = follows.filter((f) => f.following_id === c.id).length;
+          const following = follows.some((f) => f.follower_id === userId && f.following_id === c.id);
+          return (
+            <Card key={c.id} className="flex items-center justify-between gap-4 p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#2C251C] bg-[#14110E]">
+                  <User className="h-5 w-5 text-[#8A7C69]" />
+                </div>
+                <div>
+                  <h3 className="disp text-base font-semibold text-[#F3ECE1]">{c.nome}</h3>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-[#A79A88]">
+                    {c.cidade && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3" /> {c.cidade}
+                      </span>
+                    )}
+                    {c.modelo_moto && <span>{c.modelo_moto}</span>}
+                  </p>
+                  {c.nome_motoclube && (
+                    <p className="mono mt-1 text-[10px] uppercase tracking-[0.2em] text-[#E08A2E]">{c.nome_motoclube}</p>
+                  )}
+                  <p className="mono mt-1 text-[10px] text-[#6E6252]">{seguidores} seguidores</p>
+                </div>
+              </div>
+              <button
+                onClick={() => onToggleFollow(c.id)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+                  following ? "border border-[#E08A2E] text-[#E08A2E]" : "bg-[#E08A2E] text-[#14110E] shadow-[0_4px_18px_-6px_rgba(224,138,46,0.6)] hover:bg-[#F0A24C]"
+                }`}
+              >
+                {following ? <UserCheck className="h-3.5 w-3.5" /> : <UserPlus className="h-3.5 w-3.5" />}
+                {following ? "Seguindo" : "Seguir"}
+              </button>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* Tab: Motoclube (brasão)                                          */
 /* ---------------------------------------------------------------- */
-function MotoclubeTab({ profile, onSave }) {
+function MotoclubeTab({ profile, onUpload, onRemove }) {
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
 
-  function handleFile(e) {
+  async function handleFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 3 * 1024 * 1024) {
@@ -653,21 +1075,19 @@ function MotoclubeTab({ profile, onSave }) {
       return;
     }
     setBusy(true);
-    const reader = new FileReader();
-    reader.onload = () => {
-      onSave({ ...profile, brasaoDataUrl: reader.result }).finally(() => setBusy(false));
-    };
-    reader.onerror = () => setBusy(false);
-    reader.readAsDataURL(file);
-  }
-  function removeCrest() {
-    onSave({ ...profile, brasaoDataUrl: null });
+    try {
+      await onUpload(file);
+    } catch (err) {
+      alert("Erro ao enviar imagem: " + err.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (!profile.pertenceMotoclube) {
     return (
       <div className="mx-auto max-w-xl">
-        <Empty icon={Shield} text={'Vá na aba Perfil e marque "Eu pertenço a um motoclube" para cadastrar o brasão.'} />
+        <Empty icon={Shield} text='Vá na aba Perfil e marque "Eu pertenço a um motoclube" para cadastrar o brasão.' />
       </div>
     );
   }
@@ -679,8 +1099,8 @@ function MotoclubeTab({ profile, onSave }) {
 
       <Card className="mt-6 flex flex-col items-center gap-5 p-8">
         <div className="relative flex h-44 w-44 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-[#33291F] bg-[#14110E]">
-          {profile.brasaoDataUrl ? (
-            <img src={profile.brasaoDataUrl} alt="Brasão do motoclube" className="h-full w-full object-cover" />
+          {profile.brasaoUrl ? (
+            <img src={profile.brasaoUrl} alt="Brasão do motoclube" className="h-full w-full object-cover" />
           ) : (
             <Shield className="h-11 w-11 text-[#33291F]" />
           )}
@@ -690,15 +1110,14 @@ function MotoclubeTab({ profile, onSave }) {
             </div>
           )}
         </div>
-
         <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
         <div className="flex gap-3">
           <PrimaryButton disabled={busy} onClick={() => fileRef.current?.click()}>
-            <Upload className="h-4 w-4" /> {profile.brasaoDataUrl ? "Trocar imagem" : "Enviar brasão"}
+            <Upload className="h-4 w-4" /> {profile.brasaoUrl ? "Trocar imagem" : "Enviar brasão"}
           </PrimaryButton>
-          {profile.brasaoDataUrl && (
+          {profile.brasaoUrl && (
             <button
-              onClick={removeCrest}
+              onClick={onRemove}
               className="flex items-center gap-2 rounded-lg border border-[#33291F] px-4 py-3 text-sm text-[#C4B8A4] transition hover:border-[#B4442E] hover:text-[#E08072]"
             >
               <Trash2 className="h-4 w-4" /> Remover
@@ -712,53 +1131,172 @@ function MotoclubeTab({ profile, onSave }) {
 }
 
 /* ---------------------------------------------------------------- */
+/* Tab: Feed (posts com foto)                                       */
+/* ---------------------------------------------------------------- */
+function FeedTab({ feed, likes, userId, onPublish, onRemove, onToggleLike }) {
+  const [texto, setTexto] = useState("");
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const fileRef = useRef(null);
+
+  function handleFile(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 4 * 1024 * 1024) {
+      alert("Escolha uma imagem menor que 4MB.");
+      return;
+    }
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+  }
+
+  async function publicar() {
+    if (!texto.trim() && !file) return;
+    setPublishing(true);
+    try {
+      await onPublish({ texto: texto.trim(), file });
+      setTexto("");
+      setFile(null);
+      setPreview(null);
+    } catch (err) {
+      alert("Erro ao publicar: " + err.message);
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  function tempoRelativo(iso) {
+    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 1) return "agora";
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h} h`;
+    return `${Math.floor(h / 24)} d`;
+  }
+
+  return (
+    <div className="mx-auto max-w-xl">
+      <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Feed</h2>
+      <p className="mt-1 text-sm text-[#A79A88]">Divida a estrada, o rolê e a moto com a comunidade.</p>
+
+      <Card className="mt-6 flex flex-col gap-4 p-5">
+        <textarea
+          className={inputCls}
+          rows={3}
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder="No que você está pensando?"
+        />
+        <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+        {preview ? (
+          <div className="relative overflow-hidden rounded-lg border border-[#33291F]">
+            <img src={preview} alt="Prévia da foto" className="max-h-72 w-full object-cover" />
+            <button
+              onClick={() => {
+                setFile(null);
+                setPreview(null);
+              }}
+              className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-[#14110E]/85 px-2.5 py-1.5 text-[11px] text-[#F3ECE1] backdrop-blur transition hover:text-[#E08072]"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Remover
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-[#33291F] px-4 py-3 text-xs uppercase tracking-wide text-[#8A7C69] transition hover:border-[#E08A2E] hover:text-[#E08A2E]"
+          >
+            <Camera className="h-4 w-4" /> Adicionar foto
+          </button>
+        )}
+        <PrimaryButton disabled={(!texto.trim() && !file) || publishing} onClick={publicar}>
+          {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Publicar
+        </PrimaryButton>
+      </Card>
+
+      <div className="mt-6 flex flex-col gap-4">
+        {feed.length === 0 && <Empty icon={Camera} text="Nenhum post ainda. Seja o primeiro a compartilhar a estrada." />}
+        {feed.map((p) => {
+          const postLikes = likes.filter((l) => l.post_id === p.id);
+          const liked = postLikes.some((l) => l.user_id === userId);
+          const mine = p.autor_id === userId;
+          return (
+            <Card key={p.id} className="overflow-hidden p-0">
+              <div className="flex items-start justify-between gap-3 p-5 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#2C251C] bg-[#14110E]">
+                    <User className="h-4.5 w-4.5 text-[#8A7C69]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#F3ECE1]">{p.profiles?.nome || "Motociclista"}</p>
+                    <p className="mono text-[10px] text-[#6E6252]">
+                      {p.profiles?.cidade ? `${p.profiles.cidade} · ` : ""}
+                      {tempoRelativo(p.criado_em)}
+                    </p>
+                  </div>
+                </div>
+                {mine && (
+                  <button onClick={() => onRemove(p.id)} className="text-[#5C5240] transition hover:text-[#E08072]">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {p.texto && <p className="px-5 pb-3 text-sm leading-relaxed text-[#C4B8A4]">{p.texto}</p>}
+              {p.foto_url && <img src={p.foto_url} alt="Foto do post" className="max-h-96 w-full object-cover" />}
+              <div className="flex items-center gap-2 border-t border-[#2C251C] px-5 py-3">
+                <button
+                  onClick={() => onToggleLike(p.id)}
+                  className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide transition ${liked ? "text-[#E08A2E]" : "text-[#8A7C69] hover:text-[#E08A2E]"}`}
+                >
+                  <Heart className={`h-4 w-4 ${liked ? "fill-current" : ""}`} />
+                  {postLikes.length > 0 ? postLikes.length : "Curtir"}
+                </button>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* Tab: Eventos + lista de confirmação                              */
 /* ---------------------------------------------------------------- */
-function EventosTab({ eventos, onSave, profile }) {
-  const [form, setForm] = useState({ titulo: "", motoclube: "", local: "", data: "", hora: "", descricao: "", flyerDataUrl: null });
+function EventosTab({ eventos, userId, userNome, onPublish, onRemove, onToggleConfirm }) {
+  const [form, setForm] = useState({ titulo: "", motoclube: "", local: "", data: "", hora: "", descricao: "" });
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [open, setOpen] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const fileRef = useRef(null);
 
   function handleFlyerFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 3 * 1024 * 1024) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 3 * 1024 * 1024) {
       alert("Escolha uma imagem menor que 3MB.");
       return;
     }
-    setUploading(true);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setForm((f) => ({ ...f, flyerDataUrl: reader.result }));
-      setUploading(false);
-    };
-    reader.onerror = () => setUploading(false);
-    reader.readAsDataURL(file);
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
   }
 
   async function addEvento() {
     if (!form.titulo.trim() || !form.local.trim()) return;
-    const novo = { id: uid(), ...form, confirmados: [], criadoEm: Date.now() };
-    await onSave([novo, ...eventos]);
-    setForm({ titulo: "", motoclube: "", local: "", data: "", hora: "", descricao: "", flyerDataUrl: null });
-    setOpen(false);
-  }
-  async function removeEvento(id) {
-    await onSave(eventos.filter((e) => e.id !== id));
-  }
-  async function toggleConfirm(id) {
-    const nome = profile.nome?.trim();
-    if (!nome) {
-      alert("Preencha seu nome na aba Perfil antes de confirmar presença.");
-      return;
+    setPublishing(true);
+    try {
+      await onPublish({ ...form, file });
+      setForm({ titulo: "", motoclube: "", local: "", data: "", hora: "", descricao: "" });
+      setFile(null);
+      setPreview(null);
+      setOpen(false);
+    } catch (err) {
+      alert("Erro ao publicar evento: " + err.message);
+    } finally {
+      setPublishing(false);
     }
-    const next = eventos.map((e) => {
-      if (e.id !== id) return e;
-      const already = e.confirmados.includes(nome);
-      return { ...e, confirmados: already ? e.confirmados.filter((n) => n !== nome) : [...e.confirmados, nome] };
-    });
-    await onSave(next);
   }
 
   return (
@@ -798,11 +1336,14 @@ function EventosTab({ eventos, onSave, profile }) {
 
           <Field label="Flyer do evento (opcional)">
             <input ref={fileRef} type="file" accept="image/*" onChange={handleFlyerFile} className="hidden" />
-            {form.flyerDataUrl ? (
+            {preview ? (
               <div className="relative overflow-hidden rounded-lg border border-[#33291F]">
-                <img src={form.flyerDataUrl} alt="Flyer do evento" className="max-h-56 w-full object-cover" />
+                <img src={preview} alt="Flyer do evento" className="max-h-56 w-full object-cover" />
                 <button
-                  onClick={() => setForm({ ...form, flyerDataUrl: null })}
+                  onClick={() => {
+                    setFile(null);
+                    setPreview(null);
+                  }}
                   className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-[#14110E]/85 px-2.5 py-1.5 text-[11px] text-[#F3ECE1] backdrop-blur transition hover:text-[#E08072]"
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Remover
@@ -811,19 +1352,16 @@ function EventosTab({ eventos, onSave, profile }) {
             ) : (
               <button
                 onClick={() => fileRef.current?.click()}
-                disabled={uploading}
                 className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#33291F] bg-[#14110E] py-8 text-[#8A7C69] transition hover:border-[#E08A2E] hover:text-[#E08A2E]"
               >
-                {uploading ? <Loader2 className="h-6 w-6 animate-spin" /> : <ImageIcon className="h-6 w-6" />}
-                <span className="mono text-[11px] uppercase tracking-[0.2em]">
-                  {uploading ? "Enviando…" : "Carregar flyer (PNG ou JPG, até 3MB)"}
-                </span>
+                <ImageIcon className="h-6 w-6" />
+                <span className="mono text-[11px] uppercase tracking-[0.2em]">Carregar flyer (PNG ou JPG, até 3MB)</span>
               </button>
             )}
           </Field>
 
-          <PrimaryButton onClick={addEvento}>
-            <Check className="h-4 w-4" /> Publicar evento
+          <PrimaryButton disabled={publishing} onClick={addEvento}>
+            {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Publicar evento
           </PrimaryButton>
         </Card>
       )}
@@ -831,409 +1369,55 @@ function EventosTab({ eventos, onSave, profile }) {
       <div className="mt-6 flex flex-col gap-3">
         {eventos.length === 0 && <Empty icon={CalendarDays} text="Nenhum evento publicado ainda." />}
         {eventos.map((e) => {
-          const nome = profile.nome?.trim();
-          const confirmed = nome && e.confirmados.includes(nome);
+          const confirmados = e.evento_confirmacoes || [];
+          const confirmed = confirmados.some((c) => c.user_id === userId);
+          const mine = e.criado_por === userId;
           return (
             <Card key={e.id} className="overflow-hidden p-0">
-              {e.flyerDataUrl && (
-                <img src={e.flyerDataUrl} alt={`Flyer — ${e.titulo}`} className="max-h-64 w-full object-cover" />
-              )}
+              {e.flyer_url && <img src={e.flyer_url} alt={`Flyer — ${e.titulo}`} className="max-h-64 w-full object-cover" />}
               <div className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="disp text-lg font-semibold text-[#F3ECE1]">{e.titulo}</h3>
-                  {e.motoclube && (
-                    <p className="mono mt-1 text-[10px] uppercase tracking-[0.2em] text-[#E08A2E]">{e.motoclube}</p>
-                  )}
-                  <p className="mt-1 flex items-center gap-1 text-xs text-[#A79A88]">
-                    <MapPin className="h-3.5 w-3.5" /> {e.local}
-                  </p>
-                  {(e.data || e.hora) && <p className="mono mt-1 text-xs text-[#A79A88]">{e.data} {e.hora}</p>}
-                </div>
-                <button onClick={() => removeEvento(e.id)} className="text-[#5C5240] transition hover:text-[#E08072]">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-              {e.descricao && <p className="mt-3 text-sm text-[#C4B8A4]">{e.descricao}</p>}
-
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#2C251C] pt-4">
-                <div className="flex items-center gap-2 text-xs text-[#A79A88]">
-                  <Users className="h-4 w-4" />
-                  <span className="mono">{e.confirmados.length} confirmado(s)</span>
-                </div>
-                <button
-                  onClick={() => toggleConfirm(e.id)}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
-                    confirmed
-                      ? "border border-[#E08A2E] text-[#E08A2E]"
-                      : "bg-[#E08A2E] text-[#14110E] shadow-[0_4px_18px_-6px_rgba(224,138,46,0.6)] hover:bg-[#F0A24C]"
-                  }`}
-                >
-                  <Check className="h-3.5 w-3.5" /> {confirmed ? "Presença confirmada" : "Confirmar presença"}
-                </button>
-              </div>
-
-              {e.confirmados.length > 0 && (
-                <div className="mono mt-3 flex flex-wrap gap-1.5 text-[10px] text-[#8A7C69]">
-                  {e.confirmados.map((n) => (
-                    <span key={n} className="rounded-full border border-[#2C251C] bg-[#14110E] px-2.5 py-1">
-                      {n}
-                    </span>
-                  ))}
-                </div>
-              )}
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------- */
-/* Tab: Comunidade (public profiles + seguir)                       */
-/* ---------------------------------------------------------------- */
-function ComunidadeTab({ comunidade, profile, onToggleFollow }) {
-  const outros = comunidade.filter((c) => c.id !== profile.id);
-
-  if (!profile.publico || !profile.nome?.trim()) {
-    return (
-      <div className="mx-auto max-w-xl">
-        <Empty
-          icon={Users}
-          text='Ative "Exibir meu perfil na Comunidade" na aba Perfil para participar e seguir outros motociclistas.'
-        />
-        {outros.length > 0 && (
-          <p className="mono mt-4 text-center text-[11px] text-[#6E6252]">
-            {outros.length} motociclista(s) já na comunidade
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="mx-auto max-w-2xl">
-      <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Comunidade</h2>
-      <p className="mt-1 text-sm text-[#A79A88]">Motociclistas na Rota Biker. Siga quem você já rodou junto.</p>
-
-      <div className="mt-6 flex flex-col gap-3">
-        {outros.length === 0 && <Empty icon={Users} text="Ainda não há outros motociclistas públicos por aqui." />}
-        {outros.map((c) => {
-          const following = c.seguidores.includes(profile.id);
-          return (
-            <Card key={c.id} className="flex items-center justify-between gap-4 p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#2C251C] bg-[#14110E]">
-                  <User className="h-5 w-5 text-[#8A7C69]" />
-                </div>
-                <div>
-                  <h3 className="disp text-base font-semibold text-[#F3ECE1]">{c.nome}</h3>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-[#A79A88]">
-                    {c.cidade && (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="h-3 w-3" /> {c.cidade}
-                      </span>
-                    )}
-                    {c.modeloMoto && <span>{c.modeloMoto}</span>}
-                  </p>
-                  {c.nomeMotoclube && (
-                    <p className="mono mt-1 text-[10px] uppercase tracking-[0.2em] text-[#E08A2E]">{c.nomeMotoclube}</p>
-                  )}
-                  <p className="mono mt-1 text-[10px] text-[#6E6252]">{c.seguidores.length} seguidores</p>
-                </div>
-              </div>
-              <button
-                onClick={() => onToggleFollow(c.id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold uppercase tracking-wide transition ${
-                  following
-                    ? "border border-[#E08A2E] text-[#E08A2E]"
-                    : "bg-[#E08A2E] text-[#14110E] shadow-[0_4px_18px_-6px_rgba(224,138,46,0.6)] hover:bg-[#F0A24C]"
-                }`}
-              >
-                {following ? <UserCheck className="h-3.5 w-3.5" /> : <UserPlus className="h-3.5 w-3.5" />}
-                {following ? "Seguindo" : "Seguir"}
-              </button>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------- */
-/* Tab: Feed (posts com foto)                                       */
-/* ---------------------------------------------------------------- */
-function FeedTab({ feed, onSave, onToggleLike, profile }) {
-  const [texto, setTexto] = useState("");
-  const [fotoDataUrl, setFotoDataUrl] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef(null);
-
-  function handleFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 4 * 1024 * 1024) {
-      alert("Escolha uma imagem menor que 4MB.");
-      return;
-    }
-    setUploading(true);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFotoDataUrl(reader.result);
-      setUploading(false);
-    };
-    reader.onerror = () => setUploading(false);
-    reader.readAsDataURL(file);
-  }
-
-  async function publicar() {
-    if (!profile.nome?.trim()) {
-      alert("Preencha seu nome na aba Perfil antes de publicar.");
-      return;
-    }
-    if (!texto.trim() && !fotoDataUrl) return;
-    const novo = {
-      id: uid(),
-      autorId: profile.id,
-      autorNome: profile.nome,
-      autorCidade: profile.cidade,
-      texto: texto.trim(),
-      fotoDataUrl,
-      curtidas: [],
-      criadoEm: Date.now(),
-    };
-    await onSave([novo, ...feed]);
-    setTexto("");
-    setFotoDataUrl(null);
-  }
-
-  async function remover(id) {
-    await onSave(feed.filter((p) => p.id !== id));
-  }
-
-  function tempoRelativo(ts) {
-    const min = Math.floor((Date.now() - ts) / 60000);
-    if (min < 1) return "agora";
-    if (min < 60) return `${min} min`;
-    const h = Math.floor(min / 60);
-    if (h < 24) return `${h} h`;
-    return `${Math.floor(h / 24)} d`;
-  }
-
-  return (
-    <div className="mx-auto max-w-xl">
-      <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Feed</h2>
-      <p className="mt-1 text-sm text-[#A79A88]">Divida a estrada, o rolê e a moto com a comunidade.</p>
-
-      {/* Compositor */}
-      <Card className="mt-6 flex flex-col gap-4 p-5">
-        <textarea
-          className={inputCls}
-          rows={3}
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          placeholder={`No que você está pensando, ${profile.nome?.trim() ? profile.nome.split(" ")[0] : "motociclista"}?`}
-        />
-
-        <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
-        {fotoDataUrl ? (
-          <div className="relative overflow-hidden rounded-lg border border-[#33291F]">
-            <img src={fotoDataUrl} alt="Prévia da foto" className="max-h-72 w-full object-cover" />
-            <button
-              onClick={() => setFotoDataUrl(null)}
-              className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-[#14110E]/85 px-2.5 py-1.5 text-[11px] text-[#F3ECE1] backdrop-blur transition hover:text-[#E08072]"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Remover
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-[#33291F] px-4 py-3 text-xs uppercase tracking-wide text-[#8A7C69] transition hover:border-[#E08A2E] hover:text-[#E08A2E]"
-          >
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-            {uploading ? "Enviando…" : "Adicionar foto"}
-          </button>
-        )}
-
-        <PrimaryButton disabled={!texto.trim() && !fotoDataUrl} onClick={publicar}>
-          <Check className="h-4 w-4" /> Publicar
-        </PrimaryButton>
-      </Card>
-
-      {/* Lista de posts */}
-      <div className="mt-6 flex flex-col gap-4">
-        {feed.length === 0 && <Empty icon={Camera} text="Nenhum post ainda. Seja o primeiro a compartilhar a estrada." />}
-        {feed.map((p) => {
-          const liked = profile.id && p.curtidas.includes(profile.id);
-          const mine = p.autorId === profile.id;
-          return (
-            <Card key={p.id} className="overflow-hidden p-0">
-              <div className="flex items-start justify-between gap-3 p-5 pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#2C251C] bg-[#14110E]">
-                    <User className="h-4.5 w-4.5 text-[#8A7C69]" />
-                  </div>
+                <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-[#F3ECE1]">{p.autorNome}</p>
-                    <p className="mono text-[10px] text-[#6E6252]">
-                      {p.autorCidade ? `${p.autorCidade} · ` : ""}
-                      {tempoRelativo(p.criadoEm)}
+                    <h3 className="disp text-lg font-semibold text-[#F3ECE1]">{e.titulo}</h3>
+                    {e.motoclube && <p className="mono mt-1 text-[10px] uppercase tracking-[0.2em] text-[#E08A2E]">{e.motoclube}</p>}
+                    <p className="mt-1 flex items-center gap-1 text-xs text-[#A79A88]">
+                      <MapPin className="h-3.5 w-3.5" /> {e.local}
                     </p>
+                    {(e.data || e.hora) && <p className="mono mt-1 text-xs text-[#A79A88]">{e.data} {e.hora}</p>}
                   </div>
+                  {mine && (
+                    <button onClick={() => onRemove(e.id)} className="text-[#5C5240] transition hover:text-[#E08072]">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
-                {mine && (
-                  <button onClick={() => remover(p.id)} className="text-[#5C5240] transition hover:text-[#E08072]">
-                    <Trash2 className="h-4 w-4" />
+                {e.descricao && <p className="mt-3 text-sm text-[#C4B8A4]">{e.descricao}</p>}
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#2C251C] pt-4">
+                  <div className="flex items-center gap-2 text-xs text-[#A79A88]">
+                    <Users className="h-4 w-4" />
+                    <span className="mono">{confirmados.length} confirmado(s)</span>
+                  </div>
+                  <button
+                    onClick={() => onToggleConfirm(e.id)}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+                      confirmed ? "border border-[#E08A2E] text-[#E08A2E]" : "bg-[#E08A2E] text-[#14110E] shadow-[0_4px_18px_-6px_rgba(224,138,46,0.6)] hover:bg-[#F0A24C]"
+                    }`}
+                  >
+                    <Check className="h-3.5 w-3.5" /> {confirmed ? "Presença confirmada" : "Confirmar presença"}
                   </button>
+                </div>
+
+                {confirmados.length > 0 && (
+                  <div className="mono mt-3 flex flex-wrap gap-1.5 text-[10px] text-[#8A7C69]">
+                    {confirmados.map((c) => (
+                      <span key={c.user_id} className="rounded-full border border-[#2C251C] bg-[#14110E] px-2.5 py-1">
+                        {c.profiles?.nome || "Motociclista"}
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
-
-              {p.texto && <p className="px-5 pb-3 text-sm leading-relaxed text-[#C4B8A4]">{p.texto}</p>}
-              {p.fotoDataUrl && <img src={p.fotoDataUrl} alt="Foto do post" className="max-h-96 w-full object-cover" />}
-
-              <div className="flex items-center gap-2 border-t border-[#2C251C] px-5 py-3">
-                <button
-                  onClick={() => onToggleLike(p.id)}
-                  className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide transition ${
-                    liked ? "text-[#E08A2E]" : "text-[#8A7C69] hover:text-[#E08A2E]"
-                  }`}
-                >
-                  <Heart className={`h-4 w-4 ${liked ? "fill-current" : ""}`} />
-                  {p.curtidas.length > 0 ? p.curtidas.length : "Curtir"}
-                </button>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------- */
-/* Tab: Passaporte (check-in por geolocalização)                    */
-/* ---------------------------------------------------------------- */
-const CHECKIN_RADIUS_KM = 15; // tolerância, já que as coordenadas de alguns pontos são aproximadas
-
-function getPosition() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("Seu navegador não suporta geolocalização."));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 12000,
-      maximumAge: 30000,
-    });
-  });
-}
-
-function PassaporteTab({ checkins, onSave }) {
-  const [status, setStatus] = useState("idle"); // idle | locating | success | far | error
-  const [message, setMessage] = useState("");
-
-  const visitedIds = new Set(checkins.map((c) => c.monumentId));
-
-  async function fazerCheckin() {
-    setStatus("locating");
-    setMessage("");
-    try {
-      const pos = await getPosition();
-      const { latitude, longitude } = pos.coords;
-
-      let nearest = null;
-      let nearestKm = Infinity;
-      for (const m of MONUMENTS) {
-        const km = haversineKm(latitude, longitude, m.lat, m.lng);
-        if (km < nearestKm) {
-          nearestKm = km;
-          nearest = m;
-        }
-      }
-
-      if (nearestKm <= CHECKIN_RADIUS_KM) {
-        if (visitedIds.has(nearest.n)) {
-          setStatus("success");
-          setMessage(`Você já tinha carimbado "${nearest.name}" (${nearest.city}-${nearest.uf}).`);
-        } else {
-          const novo = { monumentId: nearest.n, ts: Date.now(), km: Math.round(nearestKm * 10) / 10 };
-          await onSave([...checkins, novo]);
-          setStatus("success");
-          setMessage(`Carimbo novo: "${nearest.name}" (${nearest.city}-${nearest.uf})!`);
-        }
-      } else {
-        setStatus("far");
-        setMessage(
-          `Você está a ~${Math.round(nearestKm)} km do ponto mais próximo, "${nearest.name}" (${nearest.city}-${nearest.uf}). Chegue mais perto para carimbar.`
-        );
-      }
-    } catch (err) {
-      setStatus("error");
-      if (err.code === 1) setMessage("Permissão de localização negada. Ative-a nas configurações do navegador.");
-      else setMessage(err.message || "Não foi possível obter sua localização.");
-    }
-  }
-
-  return (
-    <div className="mx-auto max-w-3xl">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Passaporte Biker</h2>
-          <p className="mt-1 text-sm text-[#A79A88]">
-            {checkins.length} de {MONUMENTS.length} monumentos carimbados
-          </p>
-        </div>
-        <PrimaryButton onClick={fazerCheckin} disabled={status === "locating"}>
-          {status === "locating" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crosshair className="h-4 w-4" />}
-          {status === "locating" ? "Localizando…" : "Fazer check-in"}
-        </PrimaryButton>
-      </div>
-
-      {message && (
-        <Card
-          className={`mt-4 p-4 text-sm ${
-            status === "success" ? "border-[#7BAE7F]/40 text-[#B7D8B9]" : status === "far" ? "text-[#C4B8A4]" : "border-[#B4442E]/40 text-[#E08072]"
-          }`}
-        >
-          {message}
-        </Card>
-      )}
-
-      <p className="mono mt-6 text-[10px] uppercase tracking-[0.2em] text-[#6E6252]">
-        O check-in usa a localização do seu dispositivo — o navegador vai pedir permissão.
-      </p>
-
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {MONUMENTS.map((m) => {
-          const visited = visitedIds.has(m.n);
-          const checkin = checkins.find((c) => c.monumentId === m.n);
-          return (
-            <Card
-              key={m.n}
-              className={`flex flex-col items-center gap-2 p-4 text-center ${
-                visited ? "border-[#E08A2E]/50 bg-[#241C12]" : "opacity-60"
-              }`}
-            >
-              <div
-                className={`flex h-12 w-12 items-center justify-center rounded-full border-2 ${
-                  visited ? "border-[#E08A2E] text-[#E08A2E]" : "border-[#33291F] text-[#33291F]"
-                }`}
-              >
-                {visited ? <Award className="h-5 w-5" /> : <Lock className="h-4 w-4" />}
-              </div>
-              <p className="disp text-xs font-semibold leading-tight text-[#F3ECE1]">{m.name}</p>
-              <p className="mono text-[9px] text-[#6E6252]">{m.city}-{m.uf}</p>
-              {visited && checkin && (
-                <p className="mono text-[9px] text-[#E08A2E]">
-                  {new Date(checkin.ts).toLocaleDateString("pt-BR")}
-                </p>
-              )}
             </Card>
           );
         })}
