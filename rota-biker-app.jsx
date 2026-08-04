@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Navigation, MapPin, Fuel, Star, ChevronRight, Compass, User, Shield,
   CalendarDays, Upload, Trash2, Check, Plus, Loader2, Users, Bike, Route,
-  Image as ImageIcon, UserPlus, UserCheck
+  Image as ImageIcon, UserPlus, UserCheck, Camera, Heart
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- */
@@ -102,6 +102,7 @@ function Empty({ icon: Icon, text }) {
 /* ---------------------------------------------------------------- */
 const TABS = [
   { id: "rota", label: "Rota", icon: Compass },
+  { id: "feed", label: "Feed", icon: Camera },
   { id: "perfil", label: "Perfil", icon: User },
   { id: "comunidade", label: "Comunidade", icon: Users },
   { id: "motoclube", label: "Motoclube", icon: Shield },
@@ -118,6 +119,7 @@ export default function RotaBikerApp() {
   });
   const [eventos, setEventos] = useState([]);
   const [comunidade, setComunidade] = useState([]);
+  const [feed, setFeed] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -137,6 +139,10 @@ export default function RotaBikerApp() {
       try {
         const cm = await window.storage.get("comunidade", true);
         if (cm) setComunidade(JSON.parse(cm.value));
+      } catch {}
+      try {
+        const fd = await window.storage.get("feed", true);
+        if (fd) setFeed(JSON.parse(fd.value));
       } catch {}
       setLoading(false);
     })();
@@ -193,6 +199,20 @@ export default function RotaBikerApp() {
     });
     setComunidade(next);
     await persist("comunidade", next, true);
+  }
+  async function saveFeed(next) {
+    setFeed(next);
+    await persist("feed", next, true);
+  }
+  async function toggleLike(postId) {
+    if (!profile.id) return;
+    const next = feed.map((p) => {
+      if (p.id !== postId) return p;
+      const already = p.curtidas.includes(profile.id);
+      return { ...p, curtidas: already ? p.curtidas.filter((id) => id !== profile.id) : [...p.curtidas, profile.id] };
+    });
+    setFeed(next);
+    await persist("feed", next, true);
   }
 
   if (loading) {
@@ -257,8 +277,9 @@ export default function RotaBikerApp() {
         </div>
 
         {/* Stat strip */}
-        <div className="relative mt-7 grid grid-cols-3 gap-3 sm:max-w-md">
+        <div className="relative mt-7 grid grid-cols-2 gap-3 sm:max-w-lg sm:grid-cols-4">
           <StatChip icon={Compass} value={MONUMENTS.length} label="monumentos" />
+          <StatChip icon={Camera} value={feed.length} label="posts" />
           <StatChip icon={Users} value={comunidade.length} label="motociclistas" />
           <StatChip icon={CalendarDays} value={eventos.length} label="eventos" />
         </div>
@@ -287,6 +308,9 @@ export default function RotaBikerApp() {
 
       <main className="mx-auto max-w-5xl px-6 py-10 sm:px-10">
         {tab === "rota" && <RotaTab />}
+        {tab === "feed" && (
+          <FeedTab feed={feed} onSave={saveFeed} onToggleLike={toggleLike} profile={profile} />
+        )}
         {tab === "perfil" && <PerfilTab profile={profile} onSave={saveProfile} comunidade={comunidade} />}
         {tab === "comunidade" && (
           <ComunidadeTab comunidade={comunidade} profile={profile} onToggleFollow={toggleFollow} />
@@ -919,6 +943,158 @@ function ComunidadeTab({ comunidade, profile, onToggleFollow }) {
                 {following ? <UserCheck className="h-3.5 w-3.5" /> : <UserPlus className="h-3.5 w-3.5" />}
                 {following ? "Seguindo" : "Seguir"}
               </button>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Tab: Feed (posts com foto)                                       */
+/* ---------------------------------------------------------------- */
+function FeedTab({ feed, onSave, onToggleLike, profile }) {
+  const [texto, setTexto] = useState("");
+  const [fotoDataUrl, setFotoDataUrl] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      alert("Escolha uma imagem menor que 4MB.");
+      return;
+    }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFotoDataUrl(reader.result);
+      setUploading(false);
+    };
+    reader.onerror = () => setUploading(false);
+    reader.readAsDataURL(file);
+  }
+
+  async function publicar() {
+    if (!profile.nome?.trim()) {
+      alert("Preencha seu nome na aba Perfil antes de publicar.");
+      return;
+    }
+    if (!texto.trim() && !fotoDataUrl) return;
+    const novo = {
+      id: uid(),
+      autorId: profile.id,
+      autorNome: profile.nome,
+      autorCidade: profile.cidade,
+      texto: texto.trim(),
+      fotoDataUrl,
+      curtidas: [],
+      criadoEm: Date.now(),
+    };
+    await onSave([novo, ...feed]);
+    setTexto("");
+    setFotoDataUrl(null);
+  }
+
+  async function remover(id) {
+    await onSave(feed.filter((p) => p.id !== id));
+  }
+
+  function tempoRelativo(ts) {
+    const min = Math.floor((Date.now() - ts) / 60000);
+    if (min < 1) return "agora";
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h} h`;
+    return `${Math.floor(h / 24)} d`;
+  }
+
+  return (
+    <div className="mx-auto max-w-xl">
+      <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Feed</h2>
+      <p className="mt-1 text-sm text-[#A79A88]">Divida a estrada, o rolê e a moto com a comunidade.</p>
+
+      {/* Compositor */}
+      <Card className="mt-6 flex flex-col gap-4 p-5">
+        <textarea
+          className={inputCls}
+          rows={3}
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder={`No que você está pensando, ${profile.nome?.trim() ? profile.nome.split(" ")[0] : "motociclista"}?`}
+        />
+
+        <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+        {fotoDataUrl ? (
+          <div className="relative overflow-hidden rounded-lg border border-[#33291F]">
+            <img src={fotoDataUrl} alt="Prévia da foto" className="max-h-72 w-full object-cover" />
+            <button
+              onClick={() => setFotoDataUrl(null)}
+              className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-[#14110E]/85 px-2.5 py-1.5 text-[11px] text-[#F3ECE1] backdrop-blur transition hover:text-[#E08072]"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Remover
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-[#33291F] px-4 py-3 text-xs uppercase tracking-wide text-[#8A7C69] transition hover:border-[#E08A2E] hover:text-[#E08A2E]"
+          >
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+            {uploading ? "Enviando…" : "Adicionar foto"}
+          </button>
+        )}
+
+        <PrimaryButton disabled={!texto.trim() && !fotoDataUrl} onClick={publicar}>
+          <Check className="h-4 w-4" /> Publicar
+        </PrimaryButton>
+      </Card>
+
+      {/* Lista de posts */}
+      <div className="mt-6 flex flex-col gap-4">
+        {feed.length === 0 && <Empty icon={Camera} text="Nenhum post ainda. Seja o primeiro a compartilhar a estrada." />}
+        {feed.map((p) => {
+          const liked = profile.id && p.curtidas.includes(profile.id);
+          const mine = p.autorId === profile.id;
+          return (
+            <Card key={p.id} className="overflow-hidden p-0">
+              <div className="flex items-start justify-between gap-3 p-5 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#2C251C] bg-[#14110E]">
+                    <User className="h-4.5 w-4.5 text-[#8A7C69]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#F3ECE1]">{p.autorNome}</p>
+                    <p className="mono text-[10px] text-[#6E6252]">
+                      {p.autorCidade ? `${p.autorCidade} · ` : ""}
+                      {tempoRelativo(p.criadoEm)}
+                    </p>
+                  </div>
+                </div>
+                {mine && (
+                  <button onClick={() => remover(p.id)} className="text-[#5C5240] transition hover:text-[#E08072]">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {p.texto && <p className="px-5 pb-3 text-sm leading-relaxed text-[#C4B8A4]">{p.texto}</p>}
+              {p.fotoDataUrl && <img src={p.fotoDataUrl} alt="Foto do post" className="max-h-96 w-full object-cover" />}
+
+              <div className="flex items-center gap-2 border-t border-[#2C251C] px-5 py-3">
+                <button
+                  onClick={() => onToggleLike(p.id)}
+                  className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide transition ${
+                    liked ? "text-[#E08A2E]" : "text-[#8A7C69] hover:text-[#E08A2E]"
+                  }`}
+                >
+                  <Heart className={`h-4 w-4 ${liked ? "fill-current" : ""}`} />
+                  {p.curtidas.length > 0 ? p.curtidas.length : "Curtir"}
+                </button>
+              </div>
             </Card>
           );
         })}
