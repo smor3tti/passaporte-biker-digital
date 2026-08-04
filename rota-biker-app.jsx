@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Navigation, MapPin, Fuel, Star, ChevronRight, Compass, User, Shield,
-  CalendarDays, Upload, Trash2, Check, Plus, Loader2, Users, Bike, Route, Image as ImageIcon
+  CalendarDays, Upload, Trash2, Check, Plus, Loader2, Users, Bike, Route,
+  Image as ImageIcon, UserPlus, UserCheck
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- */
@@ -102,6 +103,7 @@ function Empty({ icon: Icon, text }) {
 const TABS = [
   { id: "rota", label: "Rota", icon: Compass },
   { id: "perfil", label: "Perfil", icon: User },
+  { id: "comunidade", label: "Comunidade", icon: Users },
   { id: "motoclube", label: "Motoclube", icon: Shield },
   { id: "eventos", label: "Eventos", icon: CalendarDays },
 ];
@@ -112,19 +114,29 @@ export default function RotaBikerApp() {
   const [saving, setSaving] = useState(false);
 
   const [profile, setProfile] = useState({
-    nome: "", cidade: "", modeloMoto: "", pertenceMotoclube: false, nomeMotoclube: "",
+    id: "", nome: "", cidade: "", modeloMoto: "", pertenceMotoclube: false, nomeMotoclube: "", publico: true,
   });
   const [eventos, setEventos] = useState([]);
+  const [comunidade, setComunidade] = useState([]);
 
   useEffect(() => {
     (async () => {
+      let loadedProfile = null;
       try {
         const p = await window.storage.get("profile", false);
-        if (p) setProfile(JSON.parse(p.value));
+        if (p) {
+          loadedProfile = JSON.parse(p.value);
+          if (!loadedProfile.id) loadedProfile.id = uid();
+          setProfile(loadedProfile);
+        }
       } catch {}
       try {
         const ev = await window.storage.get("eventos", true);
         if (ev) setEventos(JSON.parse(ev.value));
+      } catch {}
+      try {
+        const cm = await window.storage.get("comunidade", true);
+        if (cm) setComunidade(JSON.parse(cm.value));
       } catch {}
       setLoading(false);
     })();
@@ -141,12 +153,46 @@ export default function RotaBikerApp() {
     }
   }
   async function saveProfile(next) {
-    setProfile(next);
-    await persist("profile", next, false);
+    const withId = next.id ? next : { ...next, id: uid() };
+    setProfile(withId);
+    await persist("profile", withId, false);
+
+    // Keep the community directory in sync with this profile
+    const others = comunidade.filter((c) => c.id !== withId.id);
+    let nextComunidade = others;
+    if (withId.publico && withId.nome.trim()) {
+      const existing = comunidade.find((c) => c.id === withId.id);
+      nextComunidade = [
+        ...others,
+        {
+          id: withId.id,
+          nome: withId.nome,
+          cidade: withId.cidade,
+          modeloMoto: withId.modeloMoto,
+          nomeMotoclube: withId.pertenceMotoclube ? withId.nomeMotoclube : "",
+          seguidores: existing?.seguidores || [],
+        },
+      ];
+    }
+    setComunidade(nextComunidade);
+    await persist("comunidade", nextComunidade, true);
   }
   async function saveEventos(next) {
     setEventos(next);
     await persist("eventos", next, true);
+  }
+  async function toggleFollow(targetId) {
+    if (!profile.id) return;
+    const next = comunidade.map((c) => {
+      if (c.id !== targetId) return c;
+      const already = c.seguidores.includes(profile.id);
+      return {
+        ...c,
+        seguidores: already ? c.seguidores.filter((id) => id !== profile.id) : [...c.seguidores, profile.id],
+      };
+    });
+    setComunidade(next);
+    await persist("comunidade", next, true);
   }
 
   if (loading) {
@@ -211,8 +257,9 @@ export default function RotaBikerApp() {
         </div>
 
         {/* Stat strip */}
-        <div className="relative mt-7 grid grid-cols-2 gap-3 sm:max-w-xs">
+        <div className="relative mt-7 grid grid-cols-3 gap-3 sm:max-w-md">
           <StatChip icon={Compass} value={MONUMENTS.length} label="monumentos" />
+          <StatChip icon={Users} value={comunidade.length} label="motociclistas" />
           <StatChip icon={CalendarDays} value={eventos.length} label="eventos" />
         </div>
 
@@ -240,7 +287,10 @@ export default function RotaBikerApp() {
 
       <main className="mx-auto max-w-5xl px-6 py-10 sm:px-10">
         {tab === "rota" && <RotaTab />}
-        {tab === "perfil" && <PerfilTab profile={profile} onSave={saveProfile} />}
+        {tab === "perfil" && <PerfilTab profile={profile} onSave={saveProfile} comunidade={comunidade} />}
+        {tab === "comunidade" && (
+          <ComunidadeTab comunidade={comunidade} profile={profile} onToggleFollow={toggleFollow} />
+        )}
         {tab === "motoclube" && <MotoclubeTab profile={profile} onSave={saveProfile} />}
         {tab === "eventos" && <EventosTab eventos={eventos} onSave={saveEventos} profile={profile} />}
       </main>
@@ -482,15 +532,25 @@ function RotaPersonalizada() {
 /* ---------------------------------------------------------------- */
 /* Tab: Perfil do motociclista                                      */
 /* ---------------------------------------------------------------- */
-function PerfilTab({ profile, onSave }) {
+function PerfilTab({ profile, onSave, comunidade }) {
   const [form, setForm] = useState(profile);
   useEffect(() => setForm(profile), [profile]);
   const dirty = JSON.stringify(form) !== JSON.stringify(profile);
+  const seguidoresCount = comunidade.find((c) => c.id === profile.id)?.seguidores.length || 0;
 
   return (
     <div className="mx-auto max-w-xl">
-      <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Cadastro do motociclista</h2>
-      <p className="mt-1 text-sm text-[#A79A88]">Seus dados ficam salvos neste dispositivo.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Cadastro do motociclista</h2>
+          <p className="mt-1 text-sm text-[#A79A88]">Seus dados de contato ficam só neste dispositivo.</p>
+        </div>
+        {seguidoresCount > 0 && (
+          <div className="mono flex items-center gap-1.5 rounded-full border border-[#2C251C] bg-[#1C1712] px-3 py-1.5 text-xs text-[#E08A2E]">
+            <Users className="h-3.5 w-3.5" /> {seguidoresCount} seguidores
+          </div>
+        )}
+      </div>
 
       <Card className="mt-6 flex flex-col gap-5 p-6">
         <Field label="Nome completo">
@@ -518,6 +578,21 @@ function PerfilTab({ profile, onSave }) {
             <input className={inputCls} value={form.nomeMotoclube} onChange={(e) => setForm({ ...form, nomeMotoclube: e.target.value })} placeholder="Nome do motoclube" />
           </Field>
         )}
+
+        <label className="flex items-center gap-3 rounded-lg border border-[#2C251C] bg-[#14110E] px-4 py-3 text-sm text-[#F3ECE1]">
+          <input
+            type="checkbox"
+            checked={form.publico}
+            onChange={(e) => setForm({ ...form, publico: e.target.checked })}
+            className="h-4 w-4 accent-[#E08A2E]"
+          />
+          <span>
+            Exibir meu perfil na <strong>Comunidade</strong>
+            <span className="mono block text-[10px] font-normal text-[#6E6252]">
+              outros motociclistas poderão ver e seguir você
+            </span>
+          </span>
+        </label>
 
         <PrimaryButton disabled={!dirty} onClick={() => onSave(form)}>
           <Check className="h-4 w-4" /> Salvar cadastro
@@ -772,6 +847,78 @@ function EventosTab({ eventos, onSave, profile }) {
                 </div>
               )}
               </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Tab: Comunidade (public profiles + seguir)                       */
+/* ---------------------------------------------------------------- */
+function ComunidadeTab({ comunidade, profile, onToggleFollow }) {
+  const outros = comunidade.filter((c) => c.id !== profile.id);
+
+  if (!profile.publico || !profile.nome?.trim()) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <Empty
+          icon={Users}
+          text='Ative "Exibir meu perfil na Comunidade" na aba Perfil para participar e seguir outros motociclistas.'
+        />
+        {outros.length > 0 && (
+          <p className="mono mt-4 text-center text-[11px] text-[#6E6252]">
+            {outros.length} motociclista(s) já na comunidade
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <h2 className="disp text-2xl font-semibold text-[#F3ECE1]">Comunidade</h2>
+      <p className="mt-1 text-sm text-[#A79A88]">Motociclistas na Rota Biker. Siga quem você já rodou junto.</p>
+
+      <div className="mt-6 flex flex-col gap-3">
+        {outros.length === 0 && <Empty icon={Users} text="Ainda não há outros motociclistas públicos por aqui." />}
+        {outros.map((c) => {
+          const following = c.seguidores.includes(profile.id);
+          return (
+            <Card key={c.id} className="flex items-center justify-between gap-4 p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#2C251C] bg-[#14110E]">
+                  <User className="h-5 w-5 text-[#8A7C69]" />
+                </div>
+                <div>
+                  <h3 className="disp text-base font-semibold text-[#F3ECE1]">{c.nome}</h3>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-[#A79A88]">
+                    {c.cidade && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3" /> {c.cidade}
+                      </span>
+                    )}
+                    {c.modeloMoto && <span>{c.modeloMoto}</span>}
+                  </p>
+                  {c.nomeMotoclube && (
+                    <p className="mono mt-1 text-[10px] uppercase tracking-[0.2em] text-[#E08A2E]">{c.nomeMotoclube}</p>
+                  )}
+                  <p className="mono mt-1 text-[10px] text-[#6E6252]">{c.seguidores.length} seguidores</p>
+                </div>
+              </div>
+              <button
+                onClick={() => onToggleFollow(c.id)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+                  following
+                    ? "border border-[#E08A2E] text-[#E08A2E]"
+                    : "bg-[#E08A2E] text-[#14110E] shadow-[0_4px_18px_-6px_rgba(224,138,46,0.6)] hover:bg-[#F0A24C]"
+                }`}
+              >
+                {following ? <UserCheck className="h-3.5 w-3.5" /> : <UserPlus className="h-3.5 w-3.5" />}
+                {following ? "Seguindo" : "Seguir"}
+              </button>
             </Card>
           );
         })}
