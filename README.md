@@ -4,7 +4,7 @@ App em React (artifact) para motociclistas que rodam a **Rota Biker** pelo Brasi
 
 ## Funcionalidades
 
-- **Rota** — planejador de trajeto até um dos 24 monumentos oficiais da Rota Biker, ou uma **rota personalizada** (saída e destino livres), com integração ao Google Maps.
+- **Rota** — planejador de trajeto até um dos 33 monumentos oficiais da Rota Biker, ou uma **rota personalizada** (saída e destino livres), com integração ao Google Maps.
 - **Perfil** — cadastro do motociclista (nome, cidade, modelo da moto, motoclube).
 - **Motoclube** — upload do brasão do motoclube.
 - **Eventos** — mural de eventos de motoclubes, com upload de **flyer** e **lista de confirmação de presença**.

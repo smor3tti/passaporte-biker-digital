@@ -1,4 +1,4 @@
-const CACHE = "rota-biker-v1";
+const CACHE = "rota-biker-v2";
 const CORE_ASSETS = ["./", "./index.html", "./app.bundle.js", "./manifest.json"];
 
 self.addEventListener("install", (event) => {

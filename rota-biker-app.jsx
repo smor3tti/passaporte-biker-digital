@@ -36,6 +36,7 @@ const MONUMENTS = [
   { n: 15, name: "Garimpo em Atividade", city: "Ametista do Sul", uf: "RS", lat: -27.3616899, lng: -53.1815452, note: "Passeio subterrâneo pelas minas", rating: 4.8 },
   { n: 16, name: "Parador Paranapanema", city: "Piraju", uf: "SP", lat: -23.1958142, lng: -49.38196, note: "Às margens do rio Paranapanema", rating: 4.4 },
   { n: 17, name: "Pit Stop Canastra", city: "Vargem Bonita", uf: "MG", lat: -20.3373539, lng: -46.4251631, note: "Rota da Cachoeira Casca D'Anta", rating: 5.0 },
+  { n: 18, name: "Box 1200", city: "Jundiaí", uf: "SP", lat: -23.1887932, lng: -46.9649282, note: "Av. Luiz José Sereno, Eloy Chaves — loja premium do motociclista", rating: 4.7 },
   { n: 19, name: "Rancho Terra Crua", city: "Salesópolis", uf: "SP", lat: -23.5339144, lng: -45.8495613, note: "Serra do Mar paulista", rating: 4.5 },
   { n: 20, name: "Casa Rural", city: "Barra do Ribeiro", uf: "RS", lat: -30.4642689, lng: -51.4942239, note: "Às margens da BR-116", rating: 4.4 },
   { n: 21, name: "Parada Penhasco", city: "Penha", uf: "SC", lat: -26.7998594, lng: -48.6136359, note: "Litoral catarinense, perto do Beto Carrero", rating: 4.5 },
@@ -43,6 +44,14 @@ const MONUMENTS = [
   { n: 23, name: "Bar do Hélio", city: "Santo Antônio da Alegria", uf: "SP", lat: -21.0895949, lng: -47.1533268, note: "Interior paulista, rota tranquila", rating: 4.4 },
   { n: 24, name: "Poço do Caixão", city: "Timbé do Sul", uf: "SC", lat: -28.828738, lng: -49.8516263, note: "Pousada e camping na Serra Geral", rating: 4.8 },
   { n: 25, name: "Parque do Peão", city: "Barretos", uf: "SP", lat: -20.5093769, lng: -48.6014041, note: "Sede do Barretos Motorcycles", rating: 4.8 },
+  { n: 26, name: "Restaurante Portal Grill", city: "Porto União", uf: "SC", lat: -26.2742414, lng: -51.0541135, note: "Divisa SC/PR, vizinha de União da Vitória", rating: 4.5 },
+  { n: 27, name: "Restaurante Pedra do Baú", city: "São Bento do Sapucaí", uf: "SP", lat: -22.6804012, lng: -45.6632065, note: "Serra da Mantiqueira, aos pés da Pedra do Baú", rating: 4.7 },
+  { n: 28, name: "Hotel Barra Bonita", city: "Barra Bonita", uf: "SP", lat: -22.4978021, lng: -48.5620533, note: "Às margens do rio Tietê e da eclusa", rating: 4.5 },
+  { n: 29, name: "São José do Barreiro", city: "São José do Barreiro", uf: "SP", lat: -22.6454886, lng: -44.5772339, note: "Praça da cidade, porta da Serra da Bocaina", rating: 4.6 },
+  { n: 30, name: "Drei Schritte Restô Bar", city: "Katueté", uf: "PY", lat: -24.2539414, lng: -54.7700276, note: "Primeiro monumento fora do Brasil, no Paraguai", rating: 4.6 },
+  { n: 32, name: "Hell's Dogs Motorcycle Bar", city: "Foz do Iguaçu", uf: "PR", lat: -25.5161019, lng: -54.5752524, note: "Moto bar na Av. Paraná, tríplice fronteira", rating: 4.7 },
+  { n: 33, name: "Zapata Garage", city: "Garça", uf: "SP", lat: -22.2000514, lng: -49.6496975, note: "Garagem custom no Centro-Oeste paulista", rating: 4.7 },
+  { n: 34, name: "Parada da Búfala", city: "Sete Barras", uf: "SP", lat: -24.2770042, lng: -47.9480055, note: "SP-139 km 34, rumo à Serra da Macaca", rating: 4.6 },
 ];
 
 function haversineKm(lat1, lng1, lat2, lng2) {
