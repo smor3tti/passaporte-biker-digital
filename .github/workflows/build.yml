@@ -1,0 +1,29 @@
+name: Build bundle
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Compila app.bundle.js
+        run: |
+          printf 'import { createRoot } from "react-dom/client";\nimport RotaBikerApp from "./rota-biker-app.jsx";\ncreateRoot(document.getElementById("root")).render(<RotaBikerApp />);\n' > _entry.jsx
+          npx -y esbuild@0.23 _entry.jsx --bundle --minify --format=iife --jsx=automatic --define:process.env.NODE_ENV='"production"' --outfile=app.bundle.js
+          rm _entry.jsx
+      - name: Commit do bundle
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.bundle.js
+          git diff --cached --quiet || git commit -m "Build: recompila app.bundle.js"
+          git push
