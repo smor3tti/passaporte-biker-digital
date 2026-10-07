@@ -335,7 +335,7 @@ export default function RotaBikerApp() {
   async function loadFeed() {
     const { data: posts } = await supabase
       .from("posts")
-      .select("id, texto, foto_url, criado_em, autor_id, profiles(nome, cidade)")
+      .select("id, texto, foto_url, criado_em, autor_id, profiles!autor_id(nome, cidade)")
       .order("criado_em", { ascending: false })
       .limit(50);
     const ids = (posts || []).map((p) => p.id);
